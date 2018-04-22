@@ -16,6 +16,8 @@ import (
 
 const letters = "ABC"
 
+var symbolTable map[string]uint16
+
 func init() {
 	//using a fixed-width implementation which can store 2^16 values
 	symbolTable = make(map[string]uint16)
@@ -37,28 +39,30 @@ func RandString(n int) string {
 	return string(b)
 }
 
+//creates a string of length n with random clumps of length maxClump
 func RandStringClump(n int, maxClump int) string {
 	b := make([]byte, n)
-	for i := 0; i < len(b); i++ {
-		if rand.Intn(10)%2 == 0 {
-			clumpVal := letters[rand.Intn(len(letters))]
-			clumpSize := rand.Intn(maxClump)
-			for j := 0; j < clumpSize; j++ {
-				b[i] = clumpVal
-				i++
+	for i := range b {
+		if rand.Intn(100) == 5 && i > maxClump {
+			letter := letters[rand.Intn(len(letters))]
+			b[i] = letter
+			for j := 0; j < maxClump; j++ {
+				b[i-j] = letter
 			}
+
 		} else {
 			b[i] = letters[rand.Intn(len(letters))]
 		}
 	}
+
 	return string(b)
 }
 
 func BenchmarkRandString(b *testing.B) {
-	totalLength := 100
+	totalLength := 10
 	stringLength := make([]int, totalLength)
 	for i := 0; i < len(stringLength); i++ {
-		stringLength[i] = int(math.Pow(2, float64(i)))
+		stringLength[i] = int(math.Pow(2, float64(i))) * 1000
 	}
 
 	for i := 0; i < len(stringLength); i++ {
@@ -71,12 +75,32 @@ func BenchmarkRandString(b *testing.B) {
 	}
 }
 
+func BenchmarkRandStringClump(b *testing.B) {
+	totalLength := 8
+
+	stringLength := make([]int, totalLength)
+
+	for i := 0; i < len(stringLength); i++ {
+		stringLength[i] = int(math.Pow(2, float64(i))) * 1000
+
+	}
+
+	for i := 0; i < len(stringLength); i++ {
+		b.Run(strconv.Itoa(stringLength[i]), func(b *testing.B) {
+			for j := 0; j < b.N; j++ {
+				RandStringClump(stringLength[i], 20)
+			}
+
+		})
+	}
+}
+
 func BenchmarkLZWCompress(b *testing.B) {
 
-	count := 17
+	count := 10
 	fileSizeKB := make([]int, count)
 	for i := 0; i < len(fileSizeKB); i++ {
-		fileSizeKB[i] = int(math.Pow(2, float64(i)))
+		fileSizeKB[i] = int(math.Pow(2, float64(i))) * 1000
 	}
 
 	rfp := make([]*os.File, count)
@@ -89,6 +113,42 @@ func BenchmarkLZWCompress(b *testing.B) {
 		size := strconv.Itoa(fileSizeKB[i])
 		rfp[i], _ = os.OpenFile(strings.Join(baseInputPath, string(size)), os.O_RDWR|os.O_CREATE, 0755)
 		rfp[i].WriteString(RandString(fileSizeKB[i]))
+		rfp[i].Seek(0, 0)
+
+	}
+
+	for i := 0; i < count; i++ {
+		size := strconv.Itoa(fileSizeKB[i])
+		wfp[i], _ = os.OpenFile(strings.Join(baseOutputPath, size), os.O_RDWR|os.O_CREATE, 0755)
+		b.Run(strconv.Itoa(fileSizeKB[i]), func(b *testing.B) {
+			for j := 0; j < b.N; j++ {
+				benchmarkLZWCompress(rfp[i], wfp[i], b)
+			}
+
+		})
+
+		printCompressionRatio(rfp[i], wfp[i])
+	}
+
+}
+
+func BenchmarkLZWCompressClump(b *testing.B) {
+	count := 15
+	fileSizeKB := make([]int, count)
+	for i := 0; i < len(fileSizeKB); i++ {
+		fileSizeKB[i] = int(math.Pow(2, float64(i))) * 1000
+	}
+
+	rfp := make([]*os.File, count)
+	wfp := make([]*os.File, count)
+
+	baseInputPath := []string{"testResults/in_clump_", ""}
+	baseOutputPath := []string{"testResults/out_clump_", ""}
+
+	for i := 0; i < count; i++ {
+		size := strconv.Itoa(fileSizeKB[i])
+		rfp[i], _ = os.OpenFile(strings.Join(baseInputPath, string(size)), os.O_RDWR|os.O_CREATE, 0755)
+		rfp[i].WriteString(RandStringClump(fileSizeKB[i], 5))
 		rfp[i].Seek(0, 0)
 
 	}
